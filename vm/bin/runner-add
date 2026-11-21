@@ -36,11 +36,12 @@ cp -a "$base/template" "$dir"
   --name "$(hostname)-$name" --labels "$labels" --work _work --replace)
 
 # The runner gives these variables to every job (like on GitHub-hosted runners).
+# The job hook must end in .sh, .ps1 or .js, or the runner rejects it.
 # Each runner has its own HOME; the job-started hook empties it before a job.
 install -d -o "$RUNNER_USER" -g "$RUNNER_USER" "$dir/home"
 cat >> "$dir/.env" <<CONF
 HOME=$dir/home
-ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/runner-job-started
+ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/runner-job-started.sh
 ANDROID_HOME=/usr/local/lib/android/sdk
 ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
 ImageOS=ubuntu24

@@ -130,7 +130,7 @@ in `PATH` and admin rights or the group Hyper-V Administrators:
 
 ```powershell
 cd packer
-.\build-local.ps1               # about 20-40 minutes
+.\build-local.ps1               # about 10-20 minutes
 ```
 
 The VHDX is in `packer\output-hyperv\Virtual Hard Disks\`. Install it with

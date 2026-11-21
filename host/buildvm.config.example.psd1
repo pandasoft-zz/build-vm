@@ -15,6 +15,11 @@
     # Runner label, and the value of the RUNNER variable in the repositories.
     Label      = 'build-vm'
 
+    # Runners for each repository. A runner runs one job at a time; with 2 or
+    # more, jobs of one repository run in parallel (each runner has its own
+    # folder and HOME). Give the VM enough CPUs and RAM for the parallel jobs.
+    RunnersPerRepo = 1
+
     # Repositories for Register, Unregister, Enable, Disable and Status.
     # Put your own list in buildvm.config.psd1 (not committed), for example:
     #   Repos = @('owner/repo-a', 'owner/repo-b')

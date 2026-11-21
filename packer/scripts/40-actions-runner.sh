@@ -34,7 +34,7 @@ echo "Installed actions/runner v$version"
 install -m 0755 /tmp/vm-files/bin/runner-add /usr/local/bin/runner-add
 install -m 0755 /tmp/vm-files/bin/runner-remove /usr/local/bin/runner-remove
 install -m 0755 /tmp/vm-files/bin/runner-list /usr/local/bin/runner-list
-install -m 0755 /tmp/vm-files/bin/runner-job-started /usr/local/bin/runner-job-started
+install -m 0755 /tmp/vm-files/bin/runner-job-started.sh /usr/local/bin/runner-job-started.sh
 install -m 0644 /tmp/vm-files/systemd/docker-prune.service /etc/systemd/system/docker-prune.service
 install -m 0644 /tmp/vm-files/systemd/docker-prune.timer /etc/systemd/system/docker-prune.timer
 systemctl enable docker-prune.timer

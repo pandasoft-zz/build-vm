@@ -92,6 +92,8 @@ function Get-BuildVmConfig {
     if (-not $config.ContainsKey('VmRoot') -or -not $config.VmRoot) {
         $config.VmRoot = (Get-VMHost).VirtualMachinePath
     }
+    if (-not $config.ContainsKey('RunnersPerRepo')) { $config.RunnersPerRepo = 1 }
+    if ($config.RunnersPerRepo -notin 1..20) { throw "Config ${Path}: RunnersPerRepo must be 1 to 20." }
     $config.VmDir = Join-Path $config.VmRoot $config.VmName
     $config.CacheDir = Join-Path $env:LOCALAPPDATA 'build-vm\images'
     $config.SshKey = Join-Path $config.VmDir 'id_ed25519'
@@ -145,10 +147,20 @@ function Get-TargetRepo {
     return $Config.Repos
 }
 
-function Get-RunnerName {
-    # The same name as runner-add in the VM: <hostname>-<owner>-<repo>.
+function Get-RunnerIndex {
+    # Index arguments for runner-add: none for one runner per repository
+    # (name <hostname>-<owner>-<repo>), else 1..N (name ...-<repo>-<n>).
+    param($Config)
+    if ($Config.RunnersPerRepo -le 1) { return @('') }
+    return 1..$Config.RunnersPerRepo | ForEach-Object { "$_" }
+}
+
+function Get-RunnerFilter {
+    # jq filter for the runners of one repository on this VM: the name made by
+    # runner-add, with or without an index. owner-repo-android does not match owner-repo.
     param($Config, [string]$Name)
-    return "$($Config.VmName)-$($Name -replace '/', '-')"
+    $base = "$($Config.VmName)-$($Name -replace '/', '-')"
+    return ".runners[] | select(.name == `"$base`" or ((.name | startswith(`"$base-`")) and (.name | ltrimstr(`"$base-`") | test(`"^[0-9]+$`"))))"
 }
 
 # --------------------------------------------------------------------------
@@ -175,6 +187,14 @@ function Get-BuildVmIp {
 
 function Get-SshArgument {
     param($Config, [string]$Ip, [switch]$Interactive)
+    # The key and known_hosts are in the VM folder, which only admins can read
+    # (the Hyper-V default folder). ssh then says only "Host key verification failed".
+    $readable = foreach ($file in $Config.KnownHosts, $Config.SshKey) {
+        Test-Path -LiteralPath $file -ErrorAction SilentlyContinue
+    }
+    if ($readable -contains $false) {
+        throw "Cannot read the SSH key or known_hosts in $($Config.VmDir). Run this command in an admin PowerShell, or run Install first."
+    }
     $batchMode = if ($Interactive) { 'no' } else { 'yes' }
     return @(
         '-i', $Config.SshKey,
@@ -195,6 +215,10 @@ function Invoke-VmCommand {
     $ip = Get-BuildVmIp -Config $Config -TimeoutSec 60
     $sshArgs = (Get-SshArgument -Config $Config -Ip $ip) + $CommandLine
     if ($PSBoundParameters.ContainsKey('InputText')) {
+        # PowerShell ends piped text with CRLF; the VM scripts read one line,
+        # and a CR left in a token breaks the runner ("New-line characters are
+        # not allowed in header values").
+        $sshArgs = (Get-SshArgument -Config $Config -Ip $ip) + "tr -d '\r' | $CommandLine"
         $output = $InputText | & ssh @sshArgs
     }
     else {
@@ -407,9 +431,13 @@ function Invoke-Register {
     param($Config, [string[]]$Names)
     Confirm-Gh
     foreach ($name in Get-TargetRepo -Config $Config -Name $Names) {
-        Write-Host "${name}: adding the runner..."
+        Write-Host "${name}: adding $($Config.RunnersPerRepo) runner(s)..."
+        # One registration token works for all runners of the repository.
         $token = Invoke-Native gh @('api', '-X', 'POST', "repos/$name/actions/runners/registration-token", '--jq', '.token')
-        Invoke-VmCommand -Config $Config -CommandLine "sudo runner-add $name $($Config.Label)" -InputText $token
+        foreach ($index in Get-RunnerIndex -Config $Config) {
+            $commandLine = "sudo runner-add $name $($Config.Label) $index".TrimEnd()
+            Invoke-VmCommand -Config $Config -CommandLine $commandLine -InputText $token | Out-Host
+        }
         Invoke-Native gh @('variable', 'set', 'RUNNER', '--body', $Config.Label, '--repo', $name) | Out-Null
         Write-Host "${name}: RUNNER=$($Config.Label)"
     }
@@ -420,16 +448,15 @@ function Invoke-Unregister {
     Confirm-Gh
     $vmRunning = (Get-BuildVm $Config) -and (Get-BuildVm $Config).State -eq 'Running'
     foreach ($name in Get-TargetRepo -Config $Config -Name $Names -AllowEmpty:$AllowEmpty) {
-        Write-Host "${name}: removing the runner..."
+        Write-Host "${name}: removing the runners..."
         Disable-Repo -Name $name
         if ($vmRunning) {
             $token = Invoke-Native gh @('api', '-X', 'POST', "repos/$name/actions/runners/remove-token", '--jq', '.token')
-            Invoke-VmCommand -Config $Config -CommandLine "sudo runner-remove $name" -InputText $token
+            Invoke-VmCommand -Config $Config -CommandLine "sudo runner-remove $name" -InputText $token | Out-Host
         }
-        # When the VM is off (or the remove failed), delete the runner on GitHub directly.
-        $runnerName = Get-RunnerName -Config $Config -Name $name
+        # When the VM is off (or the remove failed), delete the runners on GitHub directly.
         $ids = Invoke-Native gh @('api', "repos/$name/actions/runners", '--paginate',
-            '--jq', ".runners[] | select(.name == `"$runnerName`") | .id")
+            '--jq', "$(Get-RunnerFilter -Config $Config -Name $name) | .id")
         foreach ($id in $ids) {
             Invoke-Native gh @('api', '-X', 'DELETE', "repos/$name/actions/runners/$id") | Out-Null
         }
@@ -463,13 +490,12 @@ function Invoke-Status {
     $rows = foreach ($name in Get-TargetRepo -Config $Config -Name $Names) {
         $variable = & gh variable get RUNNER --repo $name 2> $null
         if ($LASTEXITCODE -ne 0) { $variable = '' }
-        $runnerName = Get-RunnerName -Config $Config -Name $name
-        $runner = Invoke-Native gh @('api', "repos/$name/actions/runners", '--paginate',
-            '--jq', ".runners[] | select(.name == `"$runnerName`") | `"\(.status)\(if .busy then `" (busy)`" else `"`" end)`"")
+        $runners = @(Invoke-Native gh @('api', "repos/$name/actions/runners", '--paginate',
+                '--jq', "$(Get-RunnerFilter -Config $Config -Name $name) | `"\(.status)\(if .busy then `" (busy)`" else `"`" end)`""))
         [pscustomobject]@{
             Repository = $name
             Variable   = if ($variable) { "RUNNER=$variable" } else { '(not set)' }
-            Runner     = if ($runner) { $runner } else { '(none)' }
+            Runners    = if ($runners) { $runners -join ', ' } else { '(none)' }
         }
     }
     $rows | Format-Table -AutoSize | Out-Host

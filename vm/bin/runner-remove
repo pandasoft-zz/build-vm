@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Remove the runner service of a GitHub repository.
+# Remove the runner services of a GitHub repository: the runner without an
+# index and all runners with one (see runner-add).
 #
 # Usage: echo "$REMOVE_TOKEN" | sudo runner-remove OWNER/REPO
 #
-# With a remove token on stdin the runner is also removed from GitHub.
-# Without it, only the local service and files go (remove the runner on
+# With a remove token on stdin the runners are also removed from GitHub.
+# Without it, only the local services and files go (remove the runners on
 # GitHub by hand or with BuildVm.ps1).
 set -euo pipefail
 
@@ -17,16 +18,24 @@ base=/opt/actions-runner
 repo=$1
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "Bad repository name: $repo" >&2; exit 2; }
 read -r token || true
+token=${token%$'\r'} # a token from Windows can end with CR (CRLF)
 
-dir="$base/${repo//\//-}"
-if [ ! -d "$dir" ]; then
-  echo "$repo: no runner here."
-  exit 0
-fi
+prefix="$base/${repo//\//-}"
+removed=0
+shopt -s nullglob
+for dir in "$prefix" "$prefix"-*; do
+  [ -d "$dir" ] || continue
+  # Only <prefix> and <prefix>-<number>: owner-repo-android is another repository.
+  suffix=${dir#"$prefix"}
+  [[ -z "$suffix" || "$suffix" =~ ^-[0-9]+$ ]] || continue
 
-(cd "$dir" && { ./svc.sh stop || true; ./svc.sh uninstall || true; })
-if [ -n "${token:-}" ] && [ -f "$dir/.runner" ]; then
-  sudo -u "$RUNNER_USER" "$dir/config.sh" remove --token "$token"
-fi
-rm -rf "$dir"
-echo "$repo: removed."
+  (cd "$dir" && { ./svc.sh stop || true; ./svc.sh uninstall || true; })
+  if [ -n "${token:-}" ] && [ -f "$dir/.runner" ]; then
+    (cd "$dir" && sudo -u "$RUNNER_USER" ./config.sh remove --token "$token") ||
+      echo "$repo: could not remove $(basename "$dir") on GitHub." >&2
+  fi
+  rm -rf "$dir"
+  echo "$repo: $(basename "$dir") removed."
+  removed=1
+done
+[ "$removed" -eq 1 ] || echo "$repo: no runner here."

@@ -37,7 +37,7 @@ list of repositories stays on your PC.
 | Command | What it does |
 | --- | --- |
 | `Install [-Version v1.0.0 \| -ImagePath x.vhdx]` | Download the image (newest release by default), check SHA-256, create the VM, start it. `-ImagePath` uses a local VHDX instead |
-| `Register [-Repo o/r]` | Add a runner for each repository and set the `RUNNER` variable |
+| `Register [-Repo o/r]` | Add `RunnersPerRepo` runners for each repository and set the `RUNNER` variable |
 | `Unregister [-Repo o/r]` | Remove the runners and the `RUNNER` variable |
 | `Enable [-Repo o/r]` | Set `RUNNER` only: jobs go to the VM |
 | `Disable [-Repo o/r]` | Remove `RUNNER` only: jobs go to GitHub-hosted runners |
@@ -50,6 +50,14 @@ list of repositories stays on your PC.
 Without `-Repo` a command works on all repositories from the config. When
 the VM is off, jobs wait in the queue; `Disable` sends them to GitHub-hosted
 runners instead.
+
+A GitHub runner runs **one job at a time**. With `RunnersPerRepo = 2` (or
+more) in the config, `Register` adds runners `<vm>-<owner>-<repo>-1`, `-2`,
+..., so jobs of one repository run in parallel. Each runner has its own
+folder, `HOME` and work folder (`HOME/work`, the same layout as on
+GitHub-hosted runners). Give the VM enough CPUs and RAM (`Cpus`, `MemoryGB`)
+for the parallel jobs. Runners of a personal account belong to one
+repository, so each repository has its own runners.
 
 The workflows in the repositories use:
 

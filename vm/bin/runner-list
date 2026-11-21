@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Show the runner services on this VM: repository and service state.
+# Show the runner services on this VM: runner folder, repository and service state.
 set -euo pipefail
 
 base=/opt/actions-runner
@@ -11,5 +11,5 @@ for runner in "$base"/*/.runner; do
   service=$(cat "$dir/.service" 2>/dev/null || echo "")
   state="not installed"
   [ -n "$service" ] && state=$(systemctl is-active "$service" || true)
-  printf '%s\t%s\n' "${url#https://github.com/}" "$state"
+  printf '%s\t%s\t%s\n' "$(basename "$dir")" "${url#https://github.com/}" "$state"
 done

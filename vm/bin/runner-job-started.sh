@@ -11,4 +11,6 @@ case "$HOME" in
   /opt/actions-runner/*/home) ;;
   *) echo "HOME is $HOME, not a runner home: nothing removed." >&2; exit 0 ;;
 esac
+# Go keeps its module cache (~/go/pkg/mod) read-only; make it writable first.
+find "$HOME" -mindepth 1 -maxdepth 1 ! -name work -exec chmod -R u+w {} +
 find "$HOME" -mindepth 1 -maxdepth 1 ! -name work -exec rm -rf {} +

@@ -175,6 +175,11 @@ function Get-BuildVmIp {
 
 function Get-SshArgument {
     param($Config, [string]$Ip, [switch]$Interactive)
+    # The key and known_hosts are in the VM folder, which only admins can read
+    # (the Hyper-V default folder). ssh then says only "Host key verification failed".
+    if (-not (Test-Path -LiteralPath $Config.KnownHosts) -or -not (Test-Path -LiteralPath $Config.SshKey)) {
+        throw "Cannot read the SSH key or known_hosts in $($Config.VmDir). Run this command in an admin PowerShell, or run Install first."
+    }
     $batchMode = if ($Interactive) { 'no' } else { 'yes' }
     return @(
         '-i', $Config.SshKey,

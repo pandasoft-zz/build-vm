@@ -74,7 +74,7 @@ jobs:
           password=$(openssl rand -hex 24)
           echo "::add-mask::$password"
           packer init .
-          PACKER_LOG=0 packer build -color=false -var "build_password=$password" .
+          PACKER_LOG=0 packer build -only=qemu.build-vm -color=false -var "build_password=$password" .
 
       - name: Convert to VHDX, compress and split
         run: |

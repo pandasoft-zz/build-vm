@@ -3,5 +3,6 @@ host/buildvm.config.psd1
 
 # Packer output and cache.
 packer/output/
+packer/output-hyperv/
 packer_cache/
 dist/

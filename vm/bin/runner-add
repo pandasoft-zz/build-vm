@@ -15,7 +15,7 @@ base=/opt/actions-runner
 . /etc/build-vm.conf
 
 [ "$(id -u)" -eq 0 ] || { echo "Run this script with sudo." >&2; exit 1; }
-[ $# -ge 1 ] && [ $# -le 3 ] || { echo "Usage: echo TOKEN | sudo runner-add OWNER/REPO [LABELS] [INDEX]" >&2; exit 2; }
+[[ $# -ge 1 && $# -le 3 ]] || { echo "Usage: echo TOKEN | sudo runner-add OWNER/REPO [LABELS] [INDEX]" >&2; exit 2; }
 repo=$1
 labels=${2:-build-vm}
 index=${3:-}

@@ -203,6 +203,10 @@ function Invoke-VmCommand {
     $ip = Get-BuildVmIp -Config $Config -TimeoutSec 60
     $sshArgs = (Get-SshArgument -Config $Config -Ip $ip) + $CommandLine
     if ($PSBoundParameters.ContainsKey('InputText')) {
+        # PowerShell ends piped text with CRLF; the VM scripts read one line,
+        # and a CR left in a token breaks the runner ("New-line characters are
+        # not allowed in header values").
+        $sshArgs = (Get-SshArgument -Config $Config -Ip $ip) + "tr -d '\r' | $CommandLine"
         $output = $InputText | & ssh @sshArgs
     }
     else {

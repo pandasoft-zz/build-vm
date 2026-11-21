@@ -18,6 +18,7 @@ labels=${2:-build-vm}
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "Bad repository name: $repo" >&2; exit 2; }
 [[ "$labels" =~ ^[A-Za-z0-9_.,-]+$ ]] || { echo "Bad labels: $labels" >&2; exit 2; }
 read -r token || true
+token=${token%$'\r'} # a token from Windows can end with CR (CRLF)
 [ -n "${token:-}" ] || { echo "No registration token on stdin." >&2; exit 2; }
 
 name=${repo//\//-}
@@ -29,9 +30,10 @@ fi
 
 rm -rf "$dir"
 cp -a "$base/template" "$dir"
-sudo -u "$RUNNER_USER" "$dir/config.sh" --unattended \
+# config.sh checks its libraries with paths relative to the current folder.
+(cd "$dir" && sudo -u "$RUNNER_USER" ./config.sh --unattended \
   --url "https://github.com/$repo" --token "$token" \
-  --name "$(hostname)-$name" --labels "$labels" --work _work --replace
+  --name "$(hostname)-$name" --labels "$labels" --work _work --replace)
 
 # The runner gives these variables to every job (like on GitHub-hosted runners).
 # Each runner has its own HOME; the job-started hook empties it before a job.

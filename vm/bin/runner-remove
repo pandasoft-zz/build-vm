@@ -17,6 +17,7 @@ base=/opt/actions-runner
 repo=$1
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "Bad repository name: $repo" >&2; exit 2; }
 read -r token || true
+token=${token%$'\r'} # a token from Windows can end with CR (CRLF)
 
 dir="$base/${repo//\//-}"
 if [ ! -d "$dir" ]; then
@@ -26,7 +27,7 @@ fi
 
 (cd "$dir" && { ./svc.sh stop || true; ./svc.sh uninstall || true; })
 if [ -n "${token:-}" ] && [ -f "$dir/.runner" ]; then
-  sudo -u "$RUNNER_USER" "$dir/config.sh" remove --token "$token"
+  (cd "$dir" && sudo -u "$RUNNER_USER" ./config.sh remove --token "$token")
 fi
 rm -rf "$dir"
 echo "$repo: removed."

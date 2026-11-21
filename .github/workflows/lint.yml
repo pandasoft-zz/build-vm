@@ -1,0 +1,40 @@
+# Fast checks of the image code: Packer, shell scripts and PowerShell.
+name: lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-packer@v3.4.0
+        with:
+          version: 1.16.2
+
+      - name: Packer format and validate
+        working-directory: packer
+        run: |
+          packer init .
+          packer fmt -check -diff .
+          packer validate -var build_password=x .
+
+      - name: ShellCheck
+        run: shellcheck packer/scripts/*.sh vm/bin/*
+
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          # Write-Host is fine here: BuildVm.ps1 is an interactive console tool.
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser
+          $issues = Invoke-ScriptAnalyzer -Path host -Recurse -Severity Warning,Error -ExcludeRule PSAvoidUsingWriteHost
+          $issues | Format-Table -AutoSize
+          if ($issues) { exit 1 }

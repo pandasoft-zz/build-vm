@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Remove the runner service of a GitHub repository.
+#
+# Usage: echo "$REMOVE_TOKEN" | sudo runner-remove OWNER/REPO
+#
+# With a remove token on stdin the runner is also removed from GitHub.
+# Without it, only the local service and files go (remove the runner on
+# GitHub by hand or with BuildVm.ps1).
+set -euo pipefail
+
+base=/opt/actions-runner
+# shellcheck source=/dev/null
+. /etc/build-vm.conf
+
+[ "$(id -u)" -eq 0 ] || { echo "Run this script with sudo." >&2; exit 1; }
+[ $# -eq 1 ] || { echo "Usage: echo TOKEN | sudo runner-remove OWNER/REPO" >&2; exit 2; }
+repo=$1
+[[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "Bad repository name: $repo" >&2; exit 2; }
+read -r token || true
+
+dir="$base/${repo//\//-}"
+if [ ! -d "$dir" ]; then
+  echo "$repo: no runner here."
+  exit 0
+fi
+
+(cd "$dir" && { ./svc.sh stop || true; ./svc.sh uninstall || true; })
+if [ -n "${token:-}" ] && [ -f "$dir/.runner" ]; then
+  sudo -u "$RUNNER_USER" "$dir/config.sh" remove --token "$token"
+fi
+rm -rf "$dir"
+echo "$repo: removed."

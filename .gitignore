@@ -1,0 +1,7 @@
+# Local config of host/BuildVm.ps1.
+host/buildvm.config.psd1
+
+# Packer output and cache.
+packer/output/
+packer_cache/
+dist/

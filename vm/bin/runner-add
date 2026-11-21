@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Add one runner service for a GitHub repository.
+#
+# Usage: echo "$REGISTRATION_TOKEN" | sudo runner-add OWNER/REPO [LABELS]
+#
+# The registration token comes on stdin (it is short-lived and is not saved).
+# host/BuildVm.ps1 gets it with `gh` and calls this script over SSH.
+set -euo pipefail
+
+base=/opt/actions-runner
+# shellcheck source=/dev/null
+. /etc/build-vm.conf
+
+[ "$(id -u)" -eq 0 ] || { echo "Run this script with sudo." >&2; exit 1; }
+[ $# -ge 1 ] || { echo "Usage: echo TOKEN | sudo runner-add OWNER/REPO [LABELS]" >&2; exit 2; }
+repo=$1
+labels=${2:-build-vm}
+[[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "Bad repository name: $repo" >&2; exit 2; }
+[[ "$labels" =~ ^[A-Za-z0-9_.,-]+$ ]] || { echo "Bad labels: $labels" >&2; exit 2; }
+read -r token || true
+[ -n "${token:-}" ] || { echo "No registration token on stdin." >&2; exit 2; }
+
+name=${repo//\//-}
+dir="$base/$name"
+if [ -f "$dir/.runner" ]; then
+  echo "$repo: already added in $dir."
+  exit 0
+fi
+
+rm -rf "$dir"
+cp -a "$base/template" "$dir"
+sudo -u "$RUNNER_USER" "$dir/config.sh" --unattended \
+  --url "https://github.com/$repo" --token "$token" \
+  --name "$(hostname)-$name" --labels "$labels" --work _work --replace
+
+# The runner gives these variables to every job (like on GitHub-hosted runners).
+# Each runner has its own HOME; the job-started hook empties it before a job.
+install -d -o "$RUNNER_USER" -g "$RUNNER_USER" "$dir/home"
+cat >> "$dir/.env" <<CONF
+HOME=$dir/home
+ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/runner-job-started
+ANDROID_HOME=/usr/local/lib/android/sdk
+ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+ImageOS=ubuntu24
+CONF
+
+(cd "$dir" && ./svc.sh install "$RUNNER_USER" && ./svc.sh start)
+echo "$repo: added."

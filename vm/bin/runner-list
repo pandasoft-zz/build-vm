@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Show the runner services on this VM: repository and service state.
+set -euo pipefail
+
+base=/opt/actions-runner
+shopt -s nullglob
+for runner in "$base"/*/.runner; do
+  dir=$(dirname "$runner")
+  # The runner writes .runner with a UTF-8 BOM; jq does not accept it.
+  url=$(sed '1s/^\xEF\xBB\xBF//' "$runner" | jq -r '.gitHubUrl' 2>/dev/null || echo "?")
+  service=$(cat "$dir/.service" 2>/dev/null || echo "")
+  state="not installed"
+  [ -n "$service" ] && state=$(systemctl is-active "$service" || true)
+  printf '%s\t%s\n' "${url#https://github.com/}" "$state"
+done

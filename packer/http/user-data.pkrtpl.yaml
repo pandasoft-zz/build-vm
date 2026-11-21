@@ -1,0 +1,30 @@
+#cloud-config
+# Ubuntu autoinstall config for the image build. Packer renders this template
+# and serves it over HTTP.
+# Docs: https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  timezone: Etc/UTC
+  identity:
+    hostname: ${hostname}
+    username: ${username}
+    password: "${password_hash}"
+  ssh:
+    install-server: true
+    allow-pw: true
+  # One partition over the whole disk. The default LVM layout uses only half
+  # of it, and cloud-init can grow this partition on a bigger VM disk.
+  storage:
+    layout:
+      name: direct
+  updates: security
+  packages:
+    # Hyper-V integration services (KVP daemon): Hyper-V shows the VM IP address.
+    - linux-cloud-tools-generic
+    - linux-tools-generic
+  late-commands:
+    - "echo '${username} ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/90-${username}"
+    - "chmod 0440 /target/etc/sudoers.d/90-${username}"

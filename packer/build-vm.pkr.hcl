@@ -5,11 +5,18 @@ packer {
       source  = "github.com/hashicorp/qemu"
       version = "~> 1.1"
     }
+    hyperv = {
+      source  = "github.com/hashicorp/hyperv"
+      version = "~> 1.1"
+    }
   }
 }
 
 # The image is built with QEMU/KVM on a Linux CI runner and then converted to
-# a Hyper-V VHDX (see .github/workflows/image.yml). The image holds no secret:
+# a Hyper-V VHDX (see .github/workflows/image.yml). For a local build on a
+# Windows PC with Hyper-V, the source hyperv-iso makes the VHDX directly
+# (start it with build-local.ps1).
+# The image holds no secret:
 # the build password is random and locked at the end. Each VM gets its SSH key
 # and host name from a cloud-init seed disk (see host/BuildVm.ps1).
 
@@ -50,10 +57,22 @@ variable "memory_mb" {
   default = 8192
 }
 
-variable "disk_size" {
+variable "disk_size_gb" {
+  type        = number
+  default     = 40
+  description = "Size of the image disk in GB. BuildVm.ps1 can make the VM disk bigger; cloud-init then grows the partition."
+}
+
+variable "http_ip" {
   type        = string
-  default     = "40G"
-  description = "Size of the image disk. BuildVm.ps1 can make the VM disk bigger; cloud-init then grows the partition."
+  default     = ""
+  description = "Host IP address that the VM uses for the Packer HTTP server. Empty: Packer finds it. With several vEthernet adapters the Hyper-V plugin can pick the wrong one; build-local.ps1 sets the IP of the switch."
+}
+
+variable "hyperv_switch" {
+  type        = string
+  default     = "Default Switch"
+  description = "Hyper-V virtual switch for the local build (source hyperv-iso). It needs DHCP and internet access."
 }
 
 variable "username" {
@@ -95,6 +114,26 @@ variable "runner_version" {
   description = "actions/runner version without the 'v' (for example 2.330.0), or 'latest'."
 }
 
+locals {
+  http_content = {
+    "/meta-data" = ""
+    "/user-data" = templatefile("${path.root}/http/user-data.pkrtpl.yaml", {
+      hostname      = var.vm_name
+      username      = var.username
+      password_hash = bcrypt(var.build_password)
+    })
+  }
+
+  # GRUB of the live ISO: start the installer in autoinstall mode.
+  boot_command = [
+    "c<wait>",
+    "linux /casper/vmlinuz --- autoinstall ds=\"nocloud;s=http://${var.http_ip != "" ? var.http_ip : "{{ .HTTPIP }}"}:{{ .HTTPPort }}/\"<enter><wait>",
+    "initrd /casper/initrd<enter><wait>",
+    "boot<enter>"
+  ]
+}
+
+# CI build (Linux with KVM). The workflow converts the qcow2 to VHDX.
 source "qemu" "build-vm" {
   vm_name          = "${var.vm_name}.qcow2"
   output_directory = "output"
@@ -112,30 +151,16 @@ source "qemu" "build-vm" {
   headless          = true
 
   format             = "qcow2"
-  disk_size          = var.disk_size
+  disk_size          = "${var.disk_size_gb}G"
   disk_interface     = "virtio"
   disk_discard       = "unmap"
   disk_detect_zeroes = "unmap"
   disk_compression   = true
   net_device         = "virtio-net"
 
-  http_content = {
-    "/meta-data" = ""
-    "/user-data" = templatefile("${path.root}/http/user-data.pkrtpl.yaml", {
-      hostname      = var.vm_name
-      username      = var.username
-      password_hash = bcrypt(var.build_password)
-    })
-  }
-
-  # GRUB of the live ISO: start the installer in autoinstall mode.
-  boot_wait = "5s"
-  boot_command = [
-    "c<wait>",
-    "linux /casper/vmlinuz --- autoinstall ds=\"nocloud;s=http://{{ .HTTPIP }}:{{ .HTTPPort }}/\"<enter><wait>",
-    "initrd /casper/initrd<enter><wait>",
-    "boot<enter>"
-  ]
+  http_content = local.http_content
+  boot_wait    = "5s"
+  boot_command = local.boot_command
 
   communicator = "ssh"
   ssh_username = var.username
@@ -146,8 +171,48 @@ source "qemu" "build-vm" {
   shutdown_command = "sudo shutdown -P now"
 }
 
+# Local build on Windows with Hyper-V (admin, or a member of the group
+# Hyper-V Administrators). The VHDX is in output-hyperv/Virtual Hard Disks/.
+# The build VM has its own name, so it does not collide with the runner VM
+# from BuildVm.ps1. The host name in the image is still var.vm_name.
+source "hyperv-iso" "build-vm" {
+  vm_name          = "packer-${var.vm_name}"
+  output_directory = "output-hyperv"
+
+  iso_url      = var.iso_url
+  iso_checksum = var.iso_checksum
+
+  generation            = 2
+  enable_secure_boot    = true
+  secure_boot_template  = "MicrosoftUEFICertificateAuthority"
+  cpus                  = var.cpus
+  memory                = var.memory_mb
+  enable_dynamic_memory = false
+  switch_name           = var.hyperv_switch
+
+  disk_size       = var.disk_size_gb * 1024
+  disk_block_size = 1
+
+  http_content = local.http_content
+  boot_wait    = "5s"
+  boot_command = local.boot_command
+
+  communicator = "ssh"
+  ssh_username = var.username
+  ssh_password = var.build_password
+  ssh_timeout  = "45m"
+
+  shutdown_command = "sudo shutdown -P now"
+}
+
 build {
-  sources = ["source.qemu.build-vm"]
+  sources = ["source.qemu.build-vm", "source.hyperv-iso.build-vm"]
+
+  # The file provisioner below puts the contents of vm/ into this folder,
+  # and the folder must exist first.
+  provisioner "shell" {
+    inline = ["mkdir -p /tmp/vm-files"]
+  }
 
   provisioner "file" {
     source      = "${path.root}/../vm/"

@@ -36,7 +36,7 @@ list of repositories stays on your PC.
 
 | Command | What it does |
 | --- | --- |
-| `Install [-Version v1.0.0]` | Download the image (newest release by default), check SHA-256, create the VM, start it |
+| `Install [-Version v1.0.0 \| -ImagePath x.vhdx]` | Download the image (newest release by default), check SHA-256, create the VM, start it. `-ImagePath` uses a local VHDX instead |
 | `Register [-Repo o/r]` | Add a runner for each repository and set the `RUNNER` variable |
 | `Unregister [-Repo o/r]` | Remove the runners and the `RUNNER` variable |
 | `Enable [-Repo o/r]` | Set `RUNNER` only: jobs go to the VM |
@@ -44,7 +44,7 @@ list of repositories stays on your PC.
 | `Start` / `Stop` | Start the VM (and wait until it is ready) / shut it down |
 | `Status` | VM state and IP, and for each repository the variable and the runner state |
 | `Ssh` | SSH session to the VM |
-| `Update [-Version v1.1.0]` | Unregister, remove the VM, install the new image, register again |
+| `Update [-Version v1.1.0 \| -ImagePath x.vhdx]` | Unregister, remove the VM, install the new image, register again |
 | `Remove` | Unregister and delete the VM with its files |
 
 Without `-Repo` a command works on all repositories from the config. When
@@ -121,6 +121,30 @@ The workflow takes about 30-60 minutes. It builds on a GitHub-hosted Linux
 runner with KVM, which is free for a public repository. The release has the
 gzip parts of the VHDX (each under the 2 GiB asset limit), `SHA256SUMS` and
 `build-vm.vhdx.sha256`. Then run `.\BuildVm.ps1 Update -Version v1.0.0`.
+
+### Local build on Hyper-V
+
+To test changes without the pipeline, build the image on your PC with the
+Packer source `hyperv-iso`. It needs [Packer](https://developer.hashicorp.com/packer/install)
+in `PATH` and admin rights or the group Hyper-V Administrators:
+
+```powershell
+cd packer
+.\build-local.ps1               # about 20-40 minutes
+```
+
+The VHDX is in `packer\output-hyperv\Virtual Hard Disks\`. Install it with
+`.\BuildVm.ps1 Install -ImagePath '..\packer\output-hyperv\Virtual Hard Disks\packer-build-vm.vhdx'`
+(or `Update -ImagePath ...` for an installed VM). The script gives
+Packer the IP address of the host on the switch (`Default Switch`), because
+with several vEthernet adapters Packer can pick the wrong one. Windows
+Firewall must let the VM reach the Packer HTTP server: if the firewall dialog
+made a **Block** rule for `packer-plugin-hyperv`, remove it in an admin
+PowerShell:
+
+```powershell
+Get-NetFirewallRule -DisplayName 'packer-plugin-hyperv*' | Where-Object Action -eq Block | Remove-NetFirewallRule
+```
 
 ## Folders
 

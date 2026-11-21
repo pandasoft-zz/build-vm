@@ -31,6 +31,11 @@
 .PARAMETER Version
   Image release tag for Install and Update, for example v1.0.0. Default: latest.
 
+.PARAMETER ImagePath
+  A local VHDX for Install and Update instead of a release, for example from
+  packer\build-local.ps1 (packer\output-hyperv\Virtual Hard Disks\*.vhdx).
+  The file is copied; it does not change.
+
 .PARAMETER ConfigPath
   Config file. Default: buildvm.config.psd1 next to this script, or the
   example config when it does not exist.
@@ -40,6 +45,7 @@
 
 .EXAMPLE
   .\BuildVm.ps1 Install
+  .\BuildVm.ps1 Install -ImagePath '..\packer\output-hyperv\Virtual Hard Disks\packer-build-vm.vhdx'
   .\BuildVm.ps1 Register
   .\BuildVm.ps1 Status
   .\BuildVm.ps1 Disable -Repo owner/repo
@@ -54,6 +60,8 @@ param(
     [string[]]$Repo,
 
     [string]$Version = 'latest',
+
+    [string]$ImagePath,
 
     [string]$ConfigPath,
 
@@ -332,14 +340,22 @@ function Get-BaseImage {
 # --------------------------------------------------------------------------
 
 function Invoke-Install {
-    param($Config, [string]$Tag)
+    param($Config, [string]$Tag, [string]$LocalImage)
     Confirm-Admin
-    Confirm-Gh
     Confirm-Tool ssh 'Add the Windows feature "OpenSSH Client".'
     if (Get-BuildVm $Config) { throw "The VM '$($Config.VmName)' exists. Use Update, or Remove first." }
 
-    $Tag = Get-ImageTag -Config $Config -Tag $Tag
-    $baseImage = Get-BaseImage -Config $Config -Tag $Tag
+    if ($LocalImage) {
+        if (-not (Test-Path -LiteralPath $LocalImage -PathType Leaf)) { throw "No image file: $LocalImage" }
+        $baseImage = (Resolve-Path -LiteralPath $LocalImage).Path
+        $Tag = "local $(Split-Path -Leaf $baseImage) $((Get-Item -LiteralPath $baseImage).LastWriteTime.ToString('yyyy-MM-dd HH:mm'))"
+        Write-Host "Using the local image $baseImage"
+    }
+    else {
+        Confirm-Gh
+        $Tag = Get-ImageTag -Config $Config -Tag $Tag
+        $baseImage = Get-BaseImage -Config $Config -Tag $Tag
+    }
 
     New-Item -ItemType Directory -Force -Path $Config.VmDir | Out-Null
     $disk = Join-Path $Config.VmDir "$($Config.VmName).vhdx"
@@ -484,8 +500,16 @@ function Confirm-Action {
 
 $config = Get-BuildVmConfig -Path $ConfigPath
 
+if ($ImagePath -and $PSBoundParameters.ContainsKey('Version')) {
+    throw 'Use -Version (a release) or -ImagePath (a local VHDX), not both.'
+}
+if ($ImagePath -and $Command -notin 'Install', 'Update') {
+    throw '-ImagePath works only with Install and Update.'
+}
+$imageName = if ($ImagePath) { $ImagePath } else { $Version }
+
 switch ($Command) {
-    'Install' { Invoke-Install -Config $config -Tag $Version }
+    'Install' { Invoke-Install -Config $config -Tag $Version -LocalImage $ImagePath }
     'Register' { Invoke-Register -Config $config -Names $Repo }
     'Unregister' { Invoke-Unregister -Config $config -Names $Repo }
     'Enable' { Confirm-Gh; foreach ($name in Get-TargetRepo -Config $config -Name $Repo) { Enable-Repo -Config $config -Name $name } }
@@ -510,10 +534,10 @@ switch ($Command) {
         & ssh @sshArgs
     }
     'Update' {
-        Confirm-Action "This removes the VM '$($config.VmName)' and installs image '$Version'." -Yes:$Force
+        Confirm-Action "This removes the VM '$($config.VmName)' and installs image '$imageName'." -Yes:$Force
         Invoke-Unregister -Config $config -AllowEmpty
         Invoke-Remove -Config $config
-        Invoke-Install -Config $config -Tag $Version
+        Invoke-Install -Config $config -Tag $Version -LocalImage $ImagePath
         Invoke-Register -Config $config
     }
     'Remove' {

@@ -30,15 +30,20 @@ fi
 
 rm -rf "$dir"
 cp -a "$base/template" "$dir"
+
+# Each runner has its own HOME, and the work folder is $HOME/work, the same
+# layout as GitHub-hosted runners (/home/runner, /home/runner/work).
+# actions/cache keeps paths relative to the workspace, so a cache of ~/...
+# saved on GitHub-hosted runners lands in this HOME too. The job-started
+# hook empties HOME (but not work) before each job.
+install -d -o "$RUNNER_USER" -g "$RUNNER_USER" "$dir/home"
 # config.sh checks its libraries with paths relative to the current folder.
 (cd "$dir" && sudo -u "$RUNNER_USER" ./config.sh --unattended \
   --url "https://github.com/$repo" --token "$token" \
-  --name "$(hostname)-$name" --labels "$labels" --work _work --replace)
+  --name "$(hostname)-$name" --labels "$labels" --work home/work --replace)
 
 # The runner gives these variables to every job (like on GitHub-hosted runners).
 # The job hook must end in .sh, .ps1 or .js, or the runner rejects it.
-# Each runner has its own HOME; the job-started hook empties it before a job.
-install -d -o "$RUNNER_USER" -g "$RUNNER_USER" "$dir/home"
 cat >> "$dir/.env" <<CONF
 HOME=$dir/home
 ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/bin/runner-job-started.sh

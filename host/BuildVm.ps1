@@ -88,6 +88,7 @@ function Get-BuildVmConfig {
     $config.CacheDir = Join-Path $env:LOCALAPPDATA 'build-vm\images'
     $config.SshKey = Join-Path $config.VmDir 'id_ed25519'
     $config.KnownHosts = Join-Path $config.VmDir 'known_hosts'
+    $config.HostKey = Join-Path $config.VmDir 'ssh_host_ed25519_key'
     $config.Path = $Path
     return $config
 }
@@ -171,7 +172,10 @@ function Get-SshArgument {
         '-i', $Config.SshKey,
         '-o', "BatchMode=$batchMode",
         '-o', 'ConnectTimeout=10',
-        '-o', 'StrictHostKeyChecking=accept-new',
+        # The VM host key is made by Install and is known before the first
+        # connection (no trust on first use). The alias makes the IP not matter.
+        '-o', 'StrictHostKeyChecking=yes',
+        '-o', "HostKeyAlias=$($Config.VmName)",
         '-o', "UserKnownHostsFile=$($Config.KnownHosts)",
         "runner@$Ip"
     )
@@ -217,12 +221,15 @@ function Write-Utf8LfFile {
 function Build-SeedDisk {
     # A small FAT32 disk with the label CIDATA: the cloud-init NoCloud data source.
     # Docs: https://docs.cloud-init.io/en/latest/reference/datasources/nocloud.html
-    param($Config, [string]$Path, [string]$PublicKey)
+    param($Config, [string]$Path, [string]$PublicKey, [string]$HostPrivateKey, [string]$HostPublicKey)
 
     $metaData = @"
 instance-id: $($Config.VmName)-$([guid]::NewGuid())
 local-hostname: $($Config.VmName)
 "@
+    # The SSH host key comes from the host, so BuildVm.ps1 knows it before the
+    # first connection. Docs: https://docs.cloud-init.io/en/latest/reference/modules.html#ssh
+    $hostKeyLines = ($HostPrivateKey.Trim() -split "`r?`n" | ForEach-Object { "    $_" }) -join "`n"
     $userData = @"
 #cloud-config
 hostname: $($Config.VmName)
@@ -230,6 +237,12 @@ users:
   - name: runner
     ssh_authorized_keys:
       - $PublicKey
+ssh_deletekeys: true
+ssh_genkeytypes: []
+ssh_keys:
+  ed25519_private: |
+$hostKeyLines
+  ed25519_public: $HostPublicKey
 "@
     $networkConfig = @'
 version: 2
@@ -343,7 +356,14 @@ function Invoke-Install {
     if (-not (Test-Path $Config.SshKey)) {
         Invoke-Native ssh-keygen @('-q', '-t', 'ed25519', '-N', '', '-C', "build-vm@$env:COMPUTERNAME", '-f', $Config.SshKey) | Out-Null
     }
-    Build-SeedDisk -Config $Config -Path $seed -PublicKey (Get-Content "$($Config.SshKey).pub" -Raw).Trim()
+    # A new host key for the VM. Its public part goes to known_hosts now.
+    Remove-Item $Config.HostKey, "$($Config.HostKey).pub" -ErrorAction SilentlyContinue
+    Invoke-Native ssh-keygen @('-q', '-t', 'ed25519', '-N', '', '-C', $Config.VmName, '-f', $Config.HostKey) | Out-Null
+    $hostPublicKey = (Get-Content "$($Config.HostKey).pub" -Raw).Trim()
+    $keyType, $keyData = $hostPublicKey -split ' '
+    Write-Utf8LfFile -Path $Config.KnownHosts -Text "$($Config.VmName) $keyType $keyData`n"
+    Build-SeedDisk -Config $Config -Path $seed -PublicKey (Get-Content "$($Config.SshKey).pub" -Raw).Trim() `
+        -HostPrivateKey (Get-Content $Config.HostKey -Raw) -HostPublicKey $hostPublicKey
 
     Write-Host "Creating the VM '$($Config.VmName)'..."
     $vm = New-VM -Name $Config.VmName -Generation 2 -Path $Config.VmRoot -VHDPath $disk `
@@ -357,6 +377,13 @@ function Invoke-Install {
         -AutomaticCheckpointsEnabled $false -Notes "build-vm image $Tag"
     Start-VM -VM $vm
     Wait-BuildVmReady -Config $Config
+
+    # cloud-init is done. Turn it off, so a boot without the seed disk does not
+    # look like a new instance (new host keys), then remove the seed disk and
+    # the private host key from the host.
+    Invoke-VmCommand -Config $Config -CommandLine 'sudo touch /etc/cloud/cloud-init.disabled' | Out-Null
+    Get-VMHardDiskDrive -VM $vm | Where-Object Path -EQ $seed | Remove-VMHardDiskDrive
+    Remove-Item $seed, $Config.HostKey, "$($Config.HostKey).pub"
     Write-Host "Next: .\BuildVm.ps1 Register"
 }
 

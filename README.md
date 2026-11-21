@@ -75,6 +75,12 @@ GitHub release (assets)                   cloud-init seed disk: SSH key, name
 - The image has **no secret**. The build password is random and is locked at
   the end of the build. Each VM gets a new SSH key (in the VM folder) and its
   host name from a small cloud-init seed disk (`seed.vhdx`, label `CIDATA`).
+- **SSH trust goes both ways, with no trust on first use.** `Install` also
+  makes the SSH host key of the VM, puts it on the seed disk and writes its
+  public part to `known_hosts` before the VM starts. SSH runs with
+  `StrictHostKeyChecking=yes`, so a wrong machine at the VM IP address is
+  refused. After the first boot `Install` turns cloud-init off in the VM,
+  removes the seed disk and deletes the private host key from the PC.
 - GitHub tokens never go into the VM config: `BuildVm.ps1` gets short-lived
   registration tokens with `gh` and sends them over SSH (stdin).
 - Each repository has its own runner service (a personal account cannot

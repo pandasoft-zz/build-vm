@@ -16,8 +16,9 @@ unzip -q "$zip" -d /tmp
 mv /tmp/cmdline-tools "$sdk/cmdline-tools/latest"
 rm -f "$zip"
 
+# The command-line tools accept the SDK license when they install a package
+# (no "--licenses" step and no "yes |" pipe, which ends with SIGPIPE).
 sdkmanager="$sdk/cmdline-tools/latest/bin/sdkmanager"
-yes | "$sdkmanager" --sdk_root="$sdk" --licenses >/dev/null
 # shellcheck disable=SC2086 # ANDROID_PACKAGES is a space separated list.
 "$sdkmanager" --sdk_root="$sdk" $ANDROID_PACKAGES
 

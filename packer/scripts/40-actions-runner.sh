@@ -4,22 +4,13 @@
 # Docs: https://docs.github.com/en/actions/hosting-your-own-runners
 set -euo pipefail
 
-: "${RUNNER_VERSION:?}" "${RUNNER_USER:?}"
-api=https://api.github.com/repos/actions/runner/releases
-
-if [ "$RUNNER_VERSION" = latest ]; then
-  release=$(curl -fsSL "$api/latest")
-else
-  release=$(curl -fsSL "$api/tags/v${RUNNER_VERSION}")
-fi
-version=$(jq -r '.tag_name' <<<"$release" | sed 's/^v//')
-# The release notes carry the SHA-256 of each package between these markers.
-sha=$(jq -r '.body' <<<"$release" | sed -n 's/.*<!-- BEGIN SHA linux-x64 -->\([0-9a-f]\{64\}\)<!-- END SHA linux-x64 -->.*/\1/p')
-[ -n "$sha" ] || { echo "No SHA-256 for linux-x64 in the notes of runner v$version" >&2; exit 1; }
+# Version and SHA-256 come from build-vm.pkr.hcl (see update-versions.sh).
+: "${RUNNER_VERSION:?}" "${RUNNER_SHA256:?}" "${RUNNER_USER:?}"
+version=$RUNNER_VERSION
 
 file="actions-runner-linux-x64-${version}.tar.gz"
 curl -fsSL -o "/tmp/$file" "https://github.com/actions/runner/releases/download/v${version}/${file}"
-echo "${sha}  /tmp/$file" | sha256sum -c -
+echo "${RUNNER_SHA256}  /tmp/$file" | sha256sum -c -
 
 template=/opt/actions-runner/template
 rm -rf "$template"

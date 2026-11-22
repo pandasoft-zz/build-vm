@@ -70,6 +70,11 @@ jobs:
 
       - name: Build the image
         working-directory: packer
+        env:
+          # packer init asks api.github.com for the plugins. Without a token
+          # the API allows 60 requests per hour for each IP, and the IPs of
+          # GitHub-hosted runners are shared, so other jobs can use them up.
+          PACKER_GITHUB_API_TOKEN: ${{ github.token }}
         run: |
           password=$(openssl rand -hex 24)
           echo "::add-mask::$password"

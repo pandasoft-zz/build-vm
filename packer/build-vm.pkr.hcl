@@ -233,6 +233,7 @@ build {
       "${path.root}/scripts/10-base.sh",
       "${path.root}/scripts/15-gh-node.sh",
       "${path.root}/scripts/20-docker.sh",
+      "${path.root}/scripts/25-k8s-tools.sh",
       "${path.root}/scripts/30-android-sdk.sh",
       "${path.root}/scripts/40-actions-runner.sh",
       "${path.root}/scripts/90-cleanup.sh",

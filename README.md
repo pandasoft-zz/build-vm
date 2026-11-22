@@ -103,7 +103,9 @@ GitHub release (assets)                   cloud-init seed disk: SSH key, name
 | Ubuntu Server 24.04 | Same OS as `ubuntu-latest` / `ubuntu-24.04` |
 | Docker Engine + compose + buildx | Service containers, `docker build`, Renovate action |
 | Passwordless `sudo` | Jobs run `sudo apt-get install ...` |
-| `build-essential`, `git`, `curl`, `jq`, `unzip`, ... | Basic job tools |
+| `build-essential`, `git`, `curl`, `jq`, `unzip`, `shellcheck`, `yamllint`, ... | Basic job tools, the small ones of the GitHub-hosted image |
+| Python 3 with `python3-yaml`, `python` = `python3` | Repository scripts that read YAML |
+| `kubectl`, `helm` (major 3), `kustomize`, `yq` | Scripts call them without a setup action, as on GitHub-hosted runners |
 | `libvips-dev` | Go image library builds (govips), installed before the job asks |
 | GitHub CLI `gh`, Node.js LTS | Jobs call `gh` and `npx` without a setup action |
 | Android SDK in `/usr/local/lib/android/sdk` | Android builds; `ANDROID_HOME` is set for each job |
@@ -112,9 +114,11 @@ GitHub release (assets)                   cloud-init seed disk: SSH key, name
 | Empty `HOME` for each job (job-started hook) | Nothing stays from the job before, like on a new GitHub VM |
 | Weekly Docker clean-up (systemd timer) | The disk does not fill up |
 
-Go, Java, Helm, kubectl and other Node versions are not in the image. The
-`setup-*` actions download them into the runner tool cache, the same as on
-GitHub. Caches (`actions/cache`, `setup-gradle`) use the GitHub cache service.
+Go, other Java and Node versions, cloud CLIs (AWS, Azure, gcloud) and
+browsers are not in the image. The `setup-*` actions download them into the
+runner tool cache, the same as on GitHub; a `setup-*` action also puts its
+own Helm or kubectl version before the one in the image. Caches
+(`actions/cache`, `setup-gradle`) use the GitHub cache service.
 
 ## Build a new image
 

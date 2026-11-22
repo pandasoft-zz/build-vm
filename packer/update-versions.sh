@@ -32,6 +32,7 @@ query='{
 
 # One NAME=VALUE line for each variable. The kustomize repository also tags
 # its Go modules (api/..., kyaml/...), and helm has majors 3 and 4.
+# shellcheck disable=SC2016 # $v is a jq variable, not a shell one
 filter='.data
 | (.runner.latestRelease | (.tagName | ltrimstr("v")) as $v
    | "runner_version=\($v)",

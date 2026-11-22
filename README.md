@@ -134,6 +134,22 @@ runner with KVM, which is free for a public repository. The release has the
 gzip parts of the VHDX (each under the 2 GiB asset limit), `SHA256SUMS` and
 `build-vm.vhdx.sha256`. Then run `.\BuildVm.ps1 Update -Version v1.0.0`.
 
+### Tool versions
+
+The versions of actions/runner, kubectl, helm, kustomize and yq are fixed in
+`packer/build-vm.pkr.hcl`, each with the SHA-256 of its download. The build
+asks no API for versions, so the same commit gives the same tools. To move to
+newer versions, run (it needs `gh auth login`):
+
+```bash
+bash packer/update-versions.sh
+```
+
+It finds the newest versions with one GraphQL request to GitHub, writes them
+with their SHA-256 into the file and prints the change. Commit it and build a
+new image. A runner that GitHub finds too old updates itself, so an older
+image keeps working.
+
 ### Local build on Hyper-V
 
 To test changes without the pipeline, build the image on your PC with the

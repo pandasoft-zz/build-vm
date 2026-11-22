@@ -86,13 +86,6 @@ variable "build_password" {
   description = "Password for SSH during the build only. The last script locks it."
 }
 
-variable "github_token" {
-  type        = string
-  default     = ""
-  sensitive   = true
-  description = "Optional token for api.github.com (runner and tool versions). Without it the API allows 60 requests per hour for each IP. The scripts use it for API requests only; it is not saved in the image."
-}
-
 variable "android_cmdline_tools_build" {
   type    = string
   default = "16111833"
@@ -115,10 +108,59 @@ variable "node_major" {
   description = "Node.js major version (LTS) for jobs that call npx without setup-node."
 }
 
+# Tool versions without the 'v', each with the SHA-256 of its linux-amd64
+# download. The build asks no API for versions, so the same commit gives the
+# same tools. Get newer versions with update-versions.sh.
 variable "runner_version" {
   type        = string
-  default     = "latest"
-  description = "actions/runner version without the 'v' (for example 2.330.0), or 'latest'."
+  default     = "2.338.2"
+  description = "actions/runner version. A runner that GitHub finds too old updates itself."
+}
+
+variable "runner_sha256" {
+  type    = string
+  default = "baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40"
+}
+
+variable "kubectl_version" {
+  type    = string
+  default = "1.37.2"
+}
+
+variable "kubectl_sha256" {
+  type    = string
+  default = "c04487523e7aa7d1493f7808174c899db93d7a9cf57531420cd76b9bd415f8f4"
+}
+
+variable "helm_version" {
+  type        = string
+  default     = "3.22.1"
+  description = "Helm 3, the same major as the GitHub-hosted image."
+}
+
+variable "helm_sha256" {
+  type    = string
+  default = "896cf63684a42a723d61c980369d6e588330927deb13676ca0d85006dd6da0ea"
+}
+
+variable "kustomize_version" {
+  type    = string
+  default = "5.8.3"
+}
+
+variable "kustomize_sha256" {
+  type    = string
+  default = "cb9e31198d3f63b44848bd0afc4c8efc56e6cfef9c93a4a39a211940e6decd61"
+}
+
+variable "yq_version" {
+  type    = string
+  default = "4.54.3"
+}
+
+variable "yq_sha256" {
+  type    = string
+  default = "129534601871538efe0ba4c5e62a34fb1d5f469bcb975c4fddeb467d82974973"
 }
 
 locals {
@@ -235,7 +277,15 @@ build {
       "ANDROID_PACKAGES=${join(" ", var.android_packages)}",
       "NODE_MAJOR=${var.node_major}",
       "RUNNER_VERSION=${var.runner_version}",
-      "GITHUB_TOKEN=${var.github_token}",
+      "RUNNER_SHA256=${var.runner_sha256}",
+      "KUBECTL_VERSION=${var.kubectl_version}",
+      "KUBECTL_SHA256=${var.kubectl_sha256}",
+      "HELM_VERSION=${var.helm_version}",
+      "HELM_SHA256=${var.helm_sha256}",
+      "KUSTOMIZE_VERSION=${var.kustomize_version}",
+      "KUSTOMIZE_SHA256=${var.kustomize_sha256}",
+      "YQ_VERSION=${var.yq_version}",
+      "YQ_SHA256=${var.yq_sha256}",
     ]
     scripts = [
       "${path.root}/scripts/10-base.sh",

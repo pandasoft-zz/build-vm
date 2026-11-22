@@ -32,7 +32,7 @@ jobs:
           packer validate -var build_password=x .
 
       - name: ShellCheck
-        run: shellcheck packer/scripts/*.sh vm/bin/*
+        run: shellcheck packer/*.sh packer/scripts/*.sh vm/bin/*
 
       - name: PSScriptAnalyzer
         shell: pwsh

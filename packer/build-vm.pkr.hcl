@@ -86,6 +86,13 @@ variable "build_password" {
   description = "Password for SSH during the build only. The last script locks it."
 }
 
+variable "github_token" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Optional token for api.github.com (runner and tool versions). Without it the API allows 60 requests per hour for each IP. The scripts use it for API requests only; it is not saved in the image."
+}
+
 variable "android_cmdline_tools_build" {
   type    = string
   default = "16111833"
@@ -228,6 +235,7 @@ build {
       "ANDROID_PACKAGES=${join(" ", var.android_packages)}",
       "NODE_MAJOR=${var.node_major}",
       "RUNNER_VERSION=${var.runner_version}",
+      "GITHUB_TOKEN=${var.github_token}",
     ]
     scripts = [
       "${path.root}/scripts/10-base.sh",

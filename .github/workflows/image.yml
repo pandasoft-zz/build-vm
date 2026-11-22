@@ -68,13 +68,20 @@ jobs:
         with:
           version: ${{ env.PACKER_VERSION }}
 
+      # Without a token, api.github.com allows 60 requests per hour for each
+      # IP, and the IPs of GitHub-hosted runners are shared: packer init and
+      # the image scripts (runner and tool versions) then fail with 403.
       - name: Build the image
         working-directory: packer
+        env:
+          PACKER_GITHUB_API_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           password=$(openssl rand -hex 24)
           echo "::add-mask::$password"
           packer init .
-          PACKER_LOG=0 packer build -only=qemu.build-vm -color=false -var "build_password=$password" .
+          PACKER_LOG=0 packer build -only=qemu.build-vm -color=false \
+            -var "build_password=$password" -var "github_token=$GITHUB_TOKEN" .
 
       - name: Convert to VHDX, compress and split
         run: |

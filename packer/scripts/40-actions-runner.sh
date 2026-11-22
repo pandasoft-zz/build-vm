@@ -6,11 +6,13 @@ set -euo pipefail
 
 : "${RUNNER_VERSION:?}" "${RUNNER_USER:?}"
 api=https://api.github.com/repos/actions/runner/releases
+auth=()
+[ -n "${GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
 
 if [ "$RUNNER_VERSION" = latest ]; then
-  release=$(curl -fsSL "$api/latest")
+  release=$(curl -fsSL "${auth[@]}" "$api/latest")
 else
-  release=$(curl -fsSL "$api/tags/v${RUNNER_VERSION}")
+  release=$(curl -fsSL "${auth[@]}" "$api/tags/v${RUNNER_VERSION}")
 fi
 version=$(jq -r '.tag_name' <<<"$release" | sed 's/^v//')
 # The release notes carry the SHA-256 of each package between these markers.

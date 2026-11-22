@@ -22,6 +22,10 @@ jobs:
 
       - name: Packer format and validate
         working-directory: packer
+        env:
+          # packer init asks api.github.com for the plugins; without a token
+          # the shared runner IP often has no requests left.
+          PACKER_GITHUB_API_TOKEN: ${{ github.token }}
         run: |
           packer init .
           packer fmt -check -diff .
